@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express from "express";
 import type { ViteDevServer } from "vite";
+import { getStylesTag } from "./utils/collect-css-ssr";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -69,23 +70,17 @@ export async function createServer(
         render = (await import("./dist/server/main-node.js")).render;
       }
 
-      const mod = await vite.moduleGraph.getModuleByUrl("/src/App.tsx") as any;
-      const cssUrls = mod.ssrTransformResult.deps.filter(d => d.endsWith(".css"));
-
-      // FIXME should convert css to critical styles in first screen
-      const stylesTag = [...cssUrls]
-        .map((url) => {
-          return `<link rel="stylesheet" type="text/css" href="${url}">`;
-        })
-        .join("");
-
-      const appHtml = render(url);
+      const mod = await vite.moduleGraph.getModuleByUrl("/src/App.tsx");
+      const stylesTag = getStylesTag(mod);
 
       const html = template
-        .replace("<!--app-html-->", appHtml)
+      // .replace("<!--app-html-->", appHtml)
         .replace("<!--app-css-->", stylesTag);
 
-      res.status(200).set({ "Content-Type": "text/html" }).end(html);
+      const head = html.match(/<head>(.+?)<\/head>/s)[1];
+
+      render(url, head, res);
+      // res.status(200).set({ "Content-Type": "text/html" }).end(html);
     }
     catch (e) {
       !isProd && vite.ssrFixStacktrace(e);
